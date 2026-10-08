@@ -34,6 +34,15 @@ module.exports = async function(req,res){
 
   try{
 
+console.log(
+  "BOT_ID:",
+  process.env.COZE_BOT_ID
+);
+
+console.log(
+  "TOKEN:",
+  process.env.COZE_API_TOKEN ? "EXISTS" : "MISSING"
+);
 
     const response = await axios.post(
 
@@ -103,20 +112,67 @@ module.exports = async function(req,res){
 
 
 
-    const data=response.data;
+    const data = response.data;
+
+console.log(
+  "FULL RESPONSE:",
+  JSON.stringify(data)
+);
 
 
+if(!data.data){
 
-    const chatId=data.data.id;
+  return res.status(500).json({
+
+    error:"Coze返回格式错误",
+
+    detail:data
+
+  });
+
+}
 
 
-    const newConversationId =
-    data.data.conversation_id ||
-    conversation_id;
+const chatId =
+data.data.id ||
+data.data.chat_id;
 
 
+if(!chatId){
 
-    let answer='';
+  return res.status(500).json({
+
+    error:"没有获取到chat_id",
+
+    detail:data
+
+  });
+
+}
+
+const newConversationId =
+data.data.conversation_id ||
+conversation_id;
+
+
+if(!newConversationId){
+
+  return res.status(500).json({
+
+    error:"没有获取到conversation_id",
+
+    detail:data
+
+  });
+
+}
+
+await new Promise(
+ r=>setTimeout(r,2000)
+);
+
+
+let answer='';
 
 
 
@@ -221,20 +277,23 @@ module.exports = async function(req,res){
 
   catch(error){
 
-
-    console.log(error.response?.data || error.message);
-
-
-
-    return res.status(500).json({
-
-      error:'Coze请求失败'
-
-    });
+  console.log(
+    "ERROR:",
+    error.response?.data || error.message
+  );
 
 
-  }
+  return res.status(500).json({
 
+    error:'Coze请求失败',
+
+    detail:
+    error.response?.data ||
+    error.message
+
+  });
+
+}
 
 
 };
