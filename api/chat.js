@@ -116,11 +116,10 @@ console.log(
 
 console.log(
   "FULL RESPONSE:",
-  JSON.stringify(data)
+  JSON.stringify(data,null,2)
 );
 
-
-if(!data.data){
+if(!data || !data.data){
 
   return res.status(500).json({
 
@@ -132,10 +131,15 @@ if(!data.data){
 
 }
 
+console.log(
+  "DATA:",
+  JSON.stringify(data.data)
+);
+
 
 const chatId =
-data.data.id ||
-data.data.chat_id;
+data.data?.id ||
+data.data?.chat_id;
 
 
 if(!chatId){
@@ -150,25 +154,28 @@ if(!chatId){
 
 }
 
+
 const newConversationId =
-data.data.conversation_id ||
-conversation_id;
+data.data?.conversation_id ||
+conversation_id ||
+'';
 
 
-if(!newConversationId){
+console.log(
+"CHAT_ID:",
+chatId
+);
 
-  return res.status(500).json({
 
-    error:"没有获取到conversation_id",
+console.log(
+"CONVERSATION_ID:",
+newConversationId
+);
 
-    detail:data
 
-  });
-
-}
 
 await new Promise(
- r=>setTimeout(r,2000)
+ r=>setTimeout(r,5000)
 );
 
 
@@ -179,27 +186,30 @@ let answer='';
     for(let i=0;i<8;i++){
 
 
-      const result =
-      await axios.get(
+      const params = {
 
-        'https://api.coze.cn/v3/chat/message/list',
+  chat_id: chatId
 
-
-        {
+};
 
 
-          params:{
+if(newConversationId){
+
+  params.conversation_id = newConversationId;
+
+}
 
 
-            conversation_id:
-            newConversationId,
+const result =
+await axios.get(
+
+'https://api.coze.cn/v3/chat/message/list',
+
+{
 
 
-            chat_id:
-            chatId
 
-
-          },
+params:params,
 
 
           headers:{
@@ -220,6 +230,11 @@ let answer='';
       );
 
 
+console.log(
+  "MESSAGE LIST RESPONSE:",
+  JSON.stringify(result.data,null,2)
+);
+
 
       const messages =
       result.data?.data?.messages || [];
@@ -227,14 +242,12 @@ let answer='';
 
 
       const ai =
-      messages.find(
+messages.find(
 
-        item =>
-        item.role==='assistant'
-        &&
-        item.content
+  item =>
+  item.role === 'assistant'
 
-      );
+);
 
 
 
@@ -277,10 +290,10 @@ let answer='';
 
   catch(error){
 
-  console.log(
-    "ERROR:",
-    error.response?.data || error.message
-  );
+ console.log(
+ "ERROR:",
+ error.stack
+);
 
 
   return res.status(500).json({
