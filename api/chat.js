@@ -30,7 +30,15 @@ module.exports = async function(req,res){
 
   }
 
-
+if (
+  !process.env.COZE_BOT_ID ||
+  !process.env.COZE_API_TOKEN
+) {
+  return res.status(500).json({
+    error: '环境变量缺失',
+    detail: '请检查 COZE_BOT_ID 和 COZE_API_TOKEN'
+  });
+}
 
   try{
 
@@ -157,9 +165,9 @@ if(!chatId){
 
 const newConversationId =
 data.data?.conversation_id ||
+data.conversation_id ||
 conversation_id ||
 '';
-
 
 console.log(
 "CHAT_ID:",
@@ -183,10 +191,10 @@ let answer='';
 
 
 
-    for(let i=0;i<8;i++){
+    for(let i=0;i<15;i++){
 
 
-      const params = {
+ const params = {
 
   chat_id: chatId
 
@@ -239,25 +247,41 @@ console.log(
       const messages =
       result.data?.data?.messages || [];
 
+console.log(
+"MESSAGES:",
+JSON.stringify(messages,null,2)
+);
 
 
-      const ai =
-messages.find(
 
+    const ai = messages.find(
   item =>
-  item.role === 'assistant'
-
+    (
+      item.role === 'assistant'
+      ||
+      item.type === 'answer'
+    )
+    &&
+    item.content
 );
 
 
 
       if(ai){
 
-        answer=ai.content;
+  if(typeof ai.content === 'string'){
 
-        break;
+    answer = ai.content;
 
-      }
+  }else{
+
+    answer = JSON.stringify(ai.content);
+
+  }
+
+  break;
+
+}
 
 
 
