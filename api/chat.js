@@ -1,336 +1,158 @@
+
 const axios = require('axios');
 
-
-module.exports = async function(req,res){
-
-
-  if(req.method !== 'POST'){
-
+module.exports = async function (req, res) {
+  if (req.method !== 'POST') {
     return res.status(405).json({
-      error:'Method Not Allowed'
+      error: 'Method Not Allowed'
     });
-
   }
-
-
 
   const {
     message,
     conversation_id,
     user_id
-  } = req.body;
+  } = req.body || {};
 
-
-
-  if(!message){
-
+  if (
+    typeof message !== 'string' ||
+    !message.trim()
+  ) {
     return res.status(400).json({
-      error:'消息不能为空'
+      error: '消息不能为空'
     });
-
   }
 
-if (
-  !process.env.COZE_BOT_ID ||
-  !process.env.COZE_API_TOKEN
-) {
-  return res.status(500).json({
-    error: '环境变量缺失',
-    detail: '请检查 COZE_BOT_ID 和 COZE_API_TOKEN'
+  const botId = process.env.COZE_BOT_ID;
+  const token = process.env.COZE_API_TOKEN;
+
+  if (!botId || !token) {
+    return res.status(500).json({
+      error: '环境变量缺失',
+      detail: '请检查 COZE_BOT_ID 和 COZE_API_TOKEN'
+    });
+  }
+
+  const client = axios.create({
+    baseURL: 'https://api.coze.cn',
+    timeout: 5000,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
   });
-}
 
-  try{
-
-console.log(
-  "BOT_ID:",
-  process.env.COZE_BOT_ID
-);
-
-console.log(
-  "TOKEN:",
-  process.env.COZE_API_TOKEN ? "EXISTS" : "MISSING"
-);
-
-    const response = await axios.post(
-
-      'https://api.coze.cn/v3/chat',
-
-      {
-
-        bot_id:
-        process.env.COZE_BOT_ID,
-
-
-        user_id:
-        user_id || 'web_user',
-
-
-        stream:false,
-
-
-        additional_messages:[
-
-          {
-
-            role:'user',
-
-            content:message,
-
-            content_type:'text'
-
-          }
-
-        ],
-
-
-        ...(conversation_id
-        ?
+  try {
+    // 1. 创建对话任务
+    const response = await client.post('/v3/chat', {
+      bot_id: botId,
+      user_id: user_id || 'web_user',
+      stream: false,
+      additional_messages: [
         {
-          conversation_id
+          role: 'user',
+          content: message,
+          content_type: 'text'
         }
-        :
-        {})
-
-      },
-
-
-      {
-
-        headers:{
-
-
-          Authorization:
-          `Bearer ${process.env.COZE_API_TOKEN}`,
-
-
-          'Content-Type':
-          'application/json'
-
-
-        },
-
-
-        timeout:15000
-
-      }
-
-
-    );
-
-
+      ],
+      ...(conversation_id ? { conversation_id } : {})
+    });
 
     const data = response.data;
-
-console.log(
-  "FULL RESPONSE:",
-  JSON.stringify(data,null,2)
-);
-
-if(!data || !data.data){
-
-  return res.status(500).json({
-
-    error:"Coze返回格式错误",
-
-    detail:data
-
-  });
-
-}
-
-console.log(
-  "DATA:",
-  JSON.stringify(data.data)
-);
-
-
-const chatId =
-data.data?.id ||
-data.data?.chat_id;
-
-
-if(!chatId){
-
-  return res.status(500).json({
-
-    error:"没有获取到chat_id",
-
-    detail:data
-
-  });
-
-}
-
-
-const newConversationId =
-data.data?.conversation_id ||
-data.conversation_id ||
-conversation_id ||
-'';
-
-console.log(
-"CHAT_ID:",
-chatId
-);
-
-
-console.log(
-"CONVERSATION_ID:",
-newConversationId
-);
-
-
-
-await new Promise(
- r=>setTimeout(r,5000)
-);
-
-
-let answer='';
-
-
-
-    for(let i=0;i<15;i++){
-
-
- const params = {
-
-  chat_id: chatId
-
-};
-
-
-if(newConversationId){
-
-  params.conversation_id = newConversationId;
-
-}
-
-
-const result =
-await axios.get(
-
-'https://api.coze.cn/v3/chat/message/list',
-
-{
-
-
-
-params:params,
-
-
-          headers:{
-
-
-            Authorization:
-            `Bearer ${process.env.COZE_API_TOKEN}`
-
-
-          },
-
-
-          timeout:5000
-
-
-        }
-
-      );
-
-
-console.log(
-  "MESSAGE LIST RESPONSE:",
-  JSON.stringify(result.data,null,2)
-);
-
-
-      const messages =
-      result.data?.data?.messages || [];
-
-console.log(
-"MESSAGES:",
-JSON.stringify(messages,null,2)
-);
-
-
-
-    const ai = messages.find(
-  item =>
-    (
-      item.role === 'assistant'
-      ||
-      item.type === 'answer'
-    )
-    &&
-    item.content
-);
-
-
-
-      if(ai){
-
-  if(typeof ai.content === 'string'){
-
-    answer = ai.content;
-
-  }else{
-
-    answer = JSON.stringify(ai.content);
-
-  }
-
-  break;
-
-}
-
-
-
-      await new Promise(
-        r=>setTimeout(r,1000)
-      );
-
-
+    const chatData = data?.data;
+
+    console.log('COZE CHAT RESPONSE:', JSON.stringify(data));
+
+    if (data?.code !== 0 || !chatData) {
+      return res.status(502).json({
+        error: 'Coze创建对话失败',
+        detail: data
+      });
     }
 
+    const chatId = chatData.id || chatData.chat_id;
+    const newConversationId =
+      chatData.conversation_id || conversation_id || '';
 
+    if (!chatId || !newConversationId) {
+      return res.status(502).json({
+        error: 'Coze没有返回必要的对话标识',
+        detail: data
+      });
+    }
 
-    return res.json({
+    // 2. 在有限时间内查询消息
+    let answer = '';
 
-      type:'answer',
+    const deadline = Date.now() + 18000;
 
-      content:
-      answer || 'AI没有生成回复',
+    while (Date.now() < deadline) {
+      const result = await client.get(
+        '/v3/chat/message/list',
+        {
+          params: {
+            conversation_id: newConversationId,
+            chat_id: chatId
+          },
+          timeout: Math.min(
+            4000,
+            Math.max(1000, deadline - Date.now())
+          )
+        }
+      );
 
+      const resultData = result.data;
+      const rawData = resultData?.data;
 
-      conversation_id:
-      newConversationId
+      const messages = Array.isArray(rawData)
+        ? rawData
+        : Array.isArray(rawData?.messages)
+          ? rawData.messages
+          : [];
 
+      console.log(
+        'COZE MESSAGE LIST:',
+        JSON.stringify(resultData)
+      );
+
+      const ai = messages.find(item =>
+        item.type === 'answer' &&
+        typeof item.content === 'string' &&
+        item.content.trim() !== ''
+      );
+
+      if (ai) {
+        answer = ai.content;
+        break;
+      }
+
+      // 留一点时间让 Coze 继续生成
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    if (!answer) {
+      return res.status(504).json({
+        error: '暂时没有获取到 AI 回复',
+        detail: '请检查 Vercel 日志中的 COZE MESSAGE LIST，确认返回的消息类型和内容。',
+        conversation_id: newConversationId
+      });
+    }
+
+    return res.status(200).json({
+      type: 'answer',
+      content: answer,
+      conversation_id: newConversationId
     });
 
+  } catch (error) {
+    console.error(
+      'COZE ERROR:',
+      error.response?.data || error.message
+    );
 
-
+    return res.status(500).json({
+      error: 'Coze请求失败',
+      detail: error.response?.data || error.message
+    });
   }
-
-
-  catch(error){
-
- console.log(
- "ERROR:",
- error.stack
-);
-
-
-  return res.status(500).json({
-
-    error:'Coze请求失败',
-
-    detail:
-    error.response?.data ||
-    error.message
-
-  });
-
-}
-
-
 };
