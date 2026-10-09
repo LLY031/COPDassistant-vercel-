@@ -164,8 +164,13 @@ const answerMessages = messages.filter(item => {
 
 });
 console.log(
-  "ANSWER CANDIDATES:",
-  answerMessages.map(item => ({
+ "ANSWER CANDIDATES:",
+ answerMessages.map(item=>({
+   created_at:item.created_at,
+   bot_id:item.bot_id,
+   content:item.content
+ }))
+);
     bot_id:item.bot_id,
     content:
       typeof item.content === 'string'
@@ -173,8 +178,13 @@ console.log(
         : JSON.stringify(item.content).substring(0,50)
   }))
 );
-const answer = answerMessages[answerMessages.length - 1];
-
+const answer = answerMessages.sort(
+  (a,b)=>{
+    return Number(b.created_at || 0)
+      -
+    Number(a.created_at || 0);
+  }
+)[0];
 console.log(
  "ANSWER SELECTED:",
  JSON.stringify(answer,null,2)
@@ -251,4 +261,5 @@ return res.status(200).json({
       detail: error.response?.data?.msg || error.message
     });
   }
+};
 };
