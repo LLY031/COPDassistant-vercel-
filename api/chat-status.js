@@ -102,6 +102,12 @@ module.exports = async function (req, res) {
     const messageResult = messageResponse.data;
     const rawData = messageResult?.data;
 
+console.log(
+  "COZE RAW MESSAGE:",
+  JSON.stringify(messageResult, null, 2)
+);
+
+
     if (messageResult?.code !== 0) {
       return res.status(502).json({
         error: '获取 Coze 回答失败',
@@ -118,36 +124,63 @@ const messages =
         ? rawData.items
         : [];
 
-    const answer = messages.find(item =>
-      item.type === 'answer' &&
-      typeof item.content === 'string' &&
-      item.content.trim() !== ''
-    );
+console.log(
+  "COZE MESSAGES:",
+  JSON.stringify(messages, null, 2)
+);
 
-    if (!answer) {
-      console.error(
-        'COZE ANSWER NOT FOUND:',
-        JSON.stringify(
-          messages.map(item => ({
-            role: item.role,
-            type: item.type
-          }))
-        )
-      );
 
-      return res.status(200).json({
-        status: 'completed',
-        content: '',
-        message: '任务已完成，但没有找到最终回答'
-      });
-    }
+   const answerMessages = messages.filter(item =>
+  item.type === 'answer'
+);
 
-    return res.status(200).json({
-      status: 'completed',
-      type: 'answer',
-      content: answer.content,
-      conversation_id
-    });
+
+const answer =
+  answerMessages[answerMessages.length - 1];
+
+
+if (!answer) {
+
+  console.error(
+    'COZE ANSWER NOT FOUND:',
+    JSON.stringify(
+      messages.map(item => ({
+        role:item.role,
+        type:item.type
+      }))
+    )
+  );
+
+
+  return res.status(200).json({
+    status:'completed',
+    content:'',
+    message:'任务完成但没有找到回答'
+  });
+}
+
+
+
+const finalContent =
+  typeof answer.content === 'string'
+    ? answer.content
+    : answer.content?.text ||
+      answer.content?.content ||
+      JSON.stringify(answer.content);
+
+
+
+return res.status(200).json({
+
+  status:'completed',
+
+  type:'answer',
+
+  content:finalContent,
+
+  conversation_id
+
+});
   } catch (error) {
     console.error(
       'COZE STATUS ERROR:',
