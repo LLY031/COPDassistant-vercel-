@@ -784,223 +784,152 @@
     // 发送消息
     // ==================================================
 
-    async function sendMessage() {
+ async function sendMessage() {
+  if (isSending) return;
 
-      // 防止重复点击
-      if (isSending) {
-        return;
-      }
+  const text = userInput.value.trim();
+  if (!text) return;
 
+  addMessage(text, 'user');
+  userInput.value = '';
 
-      const text =
-        userInput.value.trim();
+  isSending = true;
+  setButtonsDisabled(true);
 
+  const botBubble = addMessage('正在连接 AI...', 'bot');
+  botBubble.classList.add('typing');
 
-      if (!text) {
-        return;
-      }
+  try {
+    // 第一步：创建 Coze 任务
+    const createResponse = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: text,
+        conversation_id: conversationId,
+        user_id: userId
+      })
+    });
 
+    const createData = await createResponse.json().catch(() => ({}));
 
-      // ------------------------------
-      // 添加用户消息
-      // ------------------------------
-
-      addMessage(
-        text,
-        'user'
+    if (!createResponse.ok) {
+      throw new Error(
+        createData.detail ||
+        createData.error ||
+        `创建任务失败：HTTP ${createResponse.status}`
       );
-
-
-      // 清空输入框
-      userInput.value =
-        '';
-
-
-      // ------------------------------
-      // 开始生成
-      // ------------------------------
-
-      isSending = true;
-
-
-      setButtonsDisabled(
-        true
-      );
-
-
-      // ------------------------------
-      // 创建 AI 气泡
-      // ------------------------------
-
-      const botBubble =
-        addMessage(
-          '',
-          'bot'
-        );
-
-
-      botBubble.classList.add(
-        'typing'
-      );
-
-
-      botBubble.textContent =
-        '正在思考...';
-
-
-      // ------------------------------
-      // 完整答案
-      // ------------------------------
-
-      let fullText = '';
-
-
-      try {
-
-        // ==================================================
-        // 请求 Node.js 后端
-        // ==================================================
-
-        const response =
-          await fetch(
-            '/api/chat',
-            {
-              method: 'POST',
-
-              headers: {
-                'Content-Type':
-                  'application/json'
-              },
-
-              body: JSON.stringify({
-
-                message: text,
-
-                conversation_id:
-                  conversationId,
-
-                user_id:
-                  userId
-              })
-            }
-          );
-
-
-        // HTTP 错误
-        if (!response.ok) {
-
-          throw new Error(
-            `服务器错误：${response.status}`
-          );
-        }
-
-
-       // ==================================================
-// 非流式 JSON 响应
-// ==================================================
-
-const data =
-  await response.json();
-
-
-// 保存 conversation_id
-
-if(data.conversation_id){
-
-  conversationId =
-    data.conversation_id;
-
-
-  sessionStorage.setItem(
-    'conversation_id',
-    conversationId
-  );
-
-}
-
-
-
-// 获取AI回答
-
-if(
-  data.type === 'answer' &&
-  data.content
-){
-
-
-  botBubble.classList.remove(
-    'typing'
-  );
-
-
-  fullText =
-    data.content;
-
-
-
-  botBubble.textContent =
-    fullText;
-
-
-
-  scrollToBottom();
-
-
-}
-else{
-
-
-  botBubble.classList.remove(
-    'typing'
-  );
-
-
-  botBubble.textContent =
-    '（AI 没有返回内容）';
-
-
-}
-
-      } catch (error) {
-
-        console.error(
-          'AI 请求失败:',
-          error
-        );
-
-
-        botBubble.classList.remove(
-          'typing'
-        );
-
-
-        botBubble.textContent =
-          '请求失败：' +
-          error.message;
-      }
-
-
-      // ==================================================
-      // 恢复按钮
-      // ==================================================
-
-      finally {
-
-        isSending =
-          false;
-
-
-        setButtonsDisabled(
-          false
-        );
-
-
-        userInput.focus();
-
-
-        scrollToBottom();
-      }
     }
+
+    const chatId = createData.chat_id;
+    const currentConversationId = createData.conversation_id;
+
+    if (!chatId || !currentConversationId) {
+      throw new Error('服务器没有返回任务编号');
+    }
+
+    conversationId = currentConversationId;
+
+    sessionStorage.setItem(
+      'conversation_id',
+      conversationId
+    );
+
+    botBubble.textContent = 'AI 正在思考...';
+
+    // 第二步：前端定期查询任务状态
+   const startedAt = Date.now();
+const maxWait = 180000;
+let finished = false;
+
+while (Date.now() - startedAt < maxWait) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const statusResponse = await fetch('/api/chat-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          conversation_id: currentConversationId
+        })
+      });
+
+      const statusData = await statusResponse.json().catch(() => ({}));
+
+      if (!statusResponse.ok) {
+        throw new Error(
+          statusData.detail ||
+          statusData.error ||
+          `查询任务失败：HTTP ${statusResponse.status}`
+        );
+      }
+
+      if (
+        statusData.status === 'created' ||
+        statusData.status === 'in_progress'
+      ) {
+        botBubble.textContent = 'AI 正在思考，请稍候...';
+        continue;
+      }
+
+     if (statusData.status === 'completed') {
+  if (
+    statusData.type === 'answer' &&
+    statusData.content
+  ) {
+    botBubble.textContent = statusData.content;
+  } else {
+    botBubble.textContent =
+      statusData.message || '任务已完成，但没有获取到回答。';
+  }
+
+  finished = true;
+  break;
+}
+
+      if (statusData.status === 'requires_action') {
+        throw new Error(
+          statusData.message || '任务需要进一步处理，请检查 Coze 配置。'
+        );
+      }
+
+      if (
+        statusData.status === 'failed' ||
+        statusData.status === 'canceled'
+      ) {
+        throw new Error(
+          statusData.message || 'Coze 任务执行失败'
+        );
+      }
+
+      throw new Error(
+        statusData.message || '收到未知的任务状态'
+      );
+    }
+
+    if (!finished && Date.now() - startedAt >= maxWait) {
+  botBubble.textContent =
+    'AI 仍在处理中。请稍后再试；任务可能仍在 Coze 运行。';
+}
+  } catch (error) {
+    console.error('AI 请求失败:', error);
+
+    botBubble.textContent =
+      '请求失败：' + error.message;
+  } finally {
+    botBubble.classList.remove('typing');
+
+    isSending = false;
+    setButtonsDisabled(false);
+
+    userInput.focus();
+    scrollToBottom();
+  }
+}
 
 
 
