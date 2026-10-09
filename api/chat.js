@@ -1,5 +1,6 @@
 
 
+
 const axios = require('axios');
 
 module.exports = async function (req, res) {
@@ -77,7 +78,7 @@ module.exports = async function (req, res) {
 
     // 2. 限时查询任务状态和最终回答
     let answer = '';
-    const deadline = Date.now() + 18000;
+    const deadline = Date.now() + 50000;
 
     while (Date.now() < deadline) {
       const remaining = deadline - Date.now();
@@ -112,6 +113,18 @@ module.exports = async function (req, res) {
           detail: statusData
         });
       }
+
+if (status === 'requires_action') {
+  console.log(
+    'COZE REQUIRES ACTION:',
+    JSON.stringify(statusData.required_action)
+  );
+
+  return res.status(502).json({
+    error: 'Coze任务需要进一步操作',
+    detail: statusData.required_action
+  });
+}
 
       if (status === 'completed') {
         const result = await client.get(
