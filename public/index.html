@@ -542,9 +542,11 @@
     // ==================================================
 
     let conversationId =
-      sessionStorage.getItem(
-        'conversation_id'
-      ) || null;
+sessionStorage.getItem('conversation_id') || null;
+
+
+let chatId =
+sessionStorage.getItem('chat_id') || null;
 
 
    let isSending = false;
@@ -730,31 +732,37 @@
 
     function newConversation() {
 
-      if (isSending) {
-        return;
-      }
+  if (isSending) {
+    return;
+  }
 
 
-      conversationId = null;
+  conversationId = null;
+
+  chatId = null;
 
 
-      sessionStorage.removeItem(
-        'conversation_id'
-      );
+  sessionStorage.removeItem(
+    'conversation_id'
+  );
 
 
-      chatMessages.innerHTML =
-        '';
+  sessionStorage.removeItem(
+    'chat_id'
+  );
 
 
-      addMessage(
-        '您好，我是 AI 智能助手，请选择下面的功能或直接输入您的问题。',
-        'bot'
-      );
+  chatMessages.innerHTML='';
 
 
-      userInput.focus();
-    }
+  addMessage(
+    '您好，我是 AI 智能助手，请选择下面的功能或直接输入您的问题。',
+    'bot'
+  );
+
+
+  userInput.focus();
+}
 
 
 
@@ -813,7 +821,7 @@
       })
     });
 
-    const createData = await createResponse.json().catch(() => ({}));
+    const createData = await createResponse.json();
 
     if (!createResponse.ok) {
       throw new Error(
@@ -823,7 +831,12 @@
       );
     }
 
-    const chatId = createData.chat_id;
+    chatId = createData.chat_id;
+
+sessionStorage.setItem(
+  'chat_id',
+  chatId
+);
     const currentConversationId = createData.conversation_id;
 
     if (!chatId || !currentConversationId) {
@@ -840,11 +853,10 @@
     botBubble.textContent = 'AI 正在思考...';
 
     // 第二步：前端定期查询任务状态
-   const startedAt = Date.now();
-const maxWait = 180000;
-let finished = false;
+    const startedAt = Date.now();
+    const maxWait = 120000;
 
-while (Date.now() - startedAt < maxWait) {
+    while (Date.now() - startedAt < maxWait) {
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       const statusResponse = await fetch('/api/chat-status', {
@@ -858,7 +870,7 @@ while (Date.now() - startedAt < maxWait) {
         })
       });
 
-      const statusData = await statusResponse.json().catch(() => ({}));
+      const statusData = await statusResponse.json();
 
       if (!statusResponse.ok) {
         throw new Error(
@@ -876,20 +888,19 @@ while (Date.now() - startedAt < maxWait) {
         continue;
       }
 
-     if (statusData.status === 'completed') {
-  if (
-    statusData.type === 'answer' &&
-    statusData.content
-  ) {
-    botBubble.textContent = statusData.content;
-  } else {
-    botBubble.textContent =
-      statusData.message || '任务已完成，但没有获取到回答。';
-  }
+      if (statusData.status === 'completed') {
+        if (
+          statusData.type === 'answer' &&
+          statusData.content
+        ) {
+          botBubble.textContent = statusData.content;
+        } else {
+          botBubble.textContent =
+            statusData.message || '任务已完成，但没有获取到回答。';
+        }
 
-  finished = true;
-  break;
-}
+        break;
+      }
 
       if (statusData.status === 'requires_action') {
         throw new Error(
@@ -911,10 +922,10 @@ while (Date.now() - startedAt < maxWait) {
       );
     }
 
-    if (!finished && Date.now() - startedAt >= maxWait) {
-  botBubble.textContent =
-    'AI 仍在处理中。请稍后再试；任务可能仍在 Coze 运行。';
-}
+    if (Date.now() - startedAt >= maxWait) {
+      botBubble.textContent =
+        'AI 仍在处理中。请稍后再试；任务可能仍在 Coze 运行。';
+    }
   } catch (error) {
     console.error('AI 请求失败:', error);
 
