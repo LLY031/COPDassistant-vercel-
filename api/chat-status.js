@@ -91,6 +91,9 @@ module.exports = async function (req, res) {
   });
 }
 
+await new Promise(resolve => setTimeout(resolve, 3000));
+
+
     // 任务完成后，获取消息列表
     const messageResponse = await client.get(
       '/v3/chat/message/list',
@@ -171,20 +174,15 @@ console.log(
    content:item.content
  }))
 );
-    bot_id:item.bot_id,
-    content:
-      typeof item.content === 'string'
-        ? item.content.substring(0,50)
-        : JSON.stringify(item.content).substring(0,50)
-  }))
-);
-const answer = answerMessages.sort(
-  (a,b)=>{
-    return Number(b.created_at || 0)
-      -
-    Number(a.created_at || 0);
-  }
-)[0];
+    const answer =
+  answerMessages.length > 0
+    ? answerMessages.sort(
+        (a,b)=>
+          Number(b.created_at || 0)
+          -
+          Number(a.created_at || 0)
+      )[0]
+    : null;
 console.log(
  "ANSWER SELECTED:",
  JSON.stringify(answer,null,2)
@@ -261,5 +259,4 @@ return res.status(200).json({
       detail: error.response?.data?.msg || error.message
     });
   }
-};
 };
