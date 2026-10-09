@@ -7,19 +7,20 @@ module.exports = async function (req, res) {
     });
   }
 
-  const { chat_id, conversation_id } = req.body || {};
+  const { message, conversation_id, user_id } = req.body || {};
 
-  if (!chat_id || !conversation_id) {
+  if (typeof message !== 'string' || !message.trim()) {
     return res.status(400).json({
-      error: '缺少 chat_id 或 conversation_id'
+      error: '消息不能为空'
     });
   }
 
+  const botId = process.env.COZE_BOT_ID;
   const token = process.env.COZE_API_TOKEN;
 
-  if (!token) {
+  if (!botId || !token) {
     return res.status(500).json({
-      error: '缺少 COZE_API_TOKEN'
+      error: '环境变量缺失'
     });
   }
 
@@ -33,162 +34,61 @@ module.exports = async function (req, res) {
   });
 
   try {
-    const response = await client.get('/v3/chat/retrieve', {
-      params: {
-        conversation_id,
-        chat_id
-      }
+    const response = await client.post('/v3/chat', {
+      bot_id: botId,
+      user_id: user_id || 'web_user',
+      stream: false,
+      additional_messages: [
+        {
+          role: 'user',
+          content: message.trim(),
+          content_type: 'text'
+        }
+      ],
+      ...(conversation_id ? { conversation_id } : {})
     });
 
     const result = response.data;
-    const task = result?.data;
+    const chat = result?.data;
 
-    if (result?.code !== 0 || !task) {
+    if (result?.code !== 0 || !chat) {
+      console.error('COZE CREATE ERROR:', JSON.stringify(result));
+
       return res.status(502).json({
-        error: '查询 Coze 任务失败',
-        detail: result?.msg || '无有效任务状态'
+        error: 'Coze创建任务失败',
+        detail: result?.msg || 'Coze未返回有效任务'
       });
     }
 
-    const status = task.status;
+    const chatId =
+  chat.id ||
+  chat.chat_id ||
+  result?.chat_id;
+    const newConversationId =
+  chat.conversation_id ||
+  result?.conversation_id ||
+  conversation_id;
 
-    // 任务尚未完成：立即返回，让前端稍后再次查询
-    if (status === 'created' || status === 'in_progress') {
-      return res.status(200).json({
-        status,
-        chat_id,
-        conversation_id
-      });
-    }
-
-    if (status === 'requires_action') {
-      console.error(
-        'COZE REQUIRES ACTION:',
-        JSON.stringify(task.required_action || null)
-      );
-
-      return res.status(200).json({
-        status: 'requires_action',
-        message: 'Coze任务需要进一步处理工具调用'
-      });
-    }
-
-    if (status === 'failed' || status === 'canceled') {
-      return res.status(200).json({
-        status,
-        message: 'Coze任务未能完成',
-        detail: task.last_error || null
-      });
-    }
-
-   if (status !== 'completed') {
-  return res.status(200).json({
-    status: status,
-    message: 'Coze返回了未预期的任务状态'
-  });
-}
-
-    // 任务完成后，获取消息列表
-    const messageResponse = await client.get(
-      '/v3/chat/message/list',
-      {
-        params: {
-          conversation_id,
-          chat_id
-        }
-      }
-    );
-
-    const messageResult = messageResponse.data;
-    const rawData = messageResult?.data;
-
-console.log(
-  "COZE RAW MESSAGE:",
-  JSON.stringify(messageResult, null, 2)
-);
-
-
-    if (messageResult?.code !== 0) {
+    if (!chatId || !newConversationId) {
       return res.status(502).json({
-        error: '获取 Coze 回答失败',
-        detail: messageResult?.msg || '消息列表请求失败'
+        error: 'Coze没有返回必要的任务标识'
       });
     }
 
-const messages =
-  Array.isArray(rawData)
-    ? rawData
-    : Array.isArray(rawData?.messages)
-      ? rawData.messages
-      : Array.isArray(rawData?.items)
-        ? rawData.items
-        : [];
-
-console.log(
-  "COZE MESSAGES:",
-  JSON.stringify(messages, null, 2)
-);
-
-
-   const answerMessages = messages.filter(item =>
-  item.type === 'answer'
-);
-
-
-const answer =
-  answerMessages[answerMessages.length - 1];
-
-
-if (!answer) {
-
-  console.error(
-    'COZE ANSWER NOT FOUND:',
-    JSON.stringify(
-      messages.map(item => ({
-        role:item.role,
-        type:item.type
-      }))
-    )
-  );
-
-
-  return res.status(200).json({
-    status:'completed',
-    content:'',
-    message:'任务完成但没有找到回答'
-  });
-}
-
-
-
-const finalContent =
-  typeof answer.content === 'string'
-    ? answer.content
-    : answer.content?.text ||
-      answer.content?.content ||
-      JSON.stringify(answer.content);
-
-
-
-return res.status(200).json({
-
-  status:'completed',
-
-  type:'answer',
-
-  content:finalContent,
-
-  conversation_id
-
-});
+    // 立即返回任务标识，不在这里等待最终回答
+    return res.status(200).json({
+      status: 'created',
+      chat_id: chatId,
+      conversation_id: newConversationId
+    });
   } catch (error) {
     console.error(
-      'COZE STATUS ERROR:',
+      'COZE CREATE ERROR:',
       error.response?.data || error.message
     );
 
     return res.status(502).json({
-      error: '查询 Coze 回答失败',
+      error: 'Coze请求失败',
       detail: error.response?.data?.msg || error.message
     });
   }
